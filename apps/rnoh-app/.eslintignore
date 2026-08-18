@@ -1,0 +1,12 @@
+node_modules/
+android/
+ios/
+harmony/
+build/
+coverage/
+.bundle/
+.hvigor/
+.idea/
+.vscode/
+dist/
+vendor/

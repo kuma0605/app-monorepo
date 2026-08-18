@@ -1,0 +1,51 @@
+/** 深色顶栏 SearchBar 主题，与 antd 默认样式 merge */
+export const darkSearchBarThemeStyles = {
+  wrapper: {
+    backgroundColor: 'transparent',
+    height: 50,
+    width: '100%' as const,
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  inputWrapper: {
+    flex: 1,
+  },
+  input: {
+    height: 50,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderColor: 'rgba(255,255,255,0.22)',
+    color: '#fff',
+    borderTopLeftRadius: 4,
+    borderBottomLeftRadius: 4,
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
+    borderRightWidth: 0,
+  },
+  search: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 20,
+  },
+  cancelTextContainer: {
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+    height: 50,
+  },
+  cancelText: {
+    width: 70,
+    height: 50,
+    lineHeight: 50,
+    textAlign: 'center' as const,
+    textAlignVertical: 'center' as const,
+    includeFontPadding: false,
+    paddingLeft: 0,
+    paddingRight: 0,
+    paddingTop: 0,
+    paddingBottom: 0,
+    color: '#fff',
+    backgroundColor: '#0C68F2',
+    fontSize: 16,
+    borderTopRightRadius: 4,
+    borderBottomRightRadius: 4,
+    overflow: 'hidden' as const,
+  },
+};

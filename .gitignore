@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+
+# Taro
+apps/miniapp/dist/
+
+# RN / Harmony
+apps/rnoh-app/.gradle/
+apps/rnoh-app/android/app/build/
+apps/rnoh-app/ios/Pods/
+apps/rnoh-app/harmony/build/

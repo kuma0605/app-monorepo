@@ -1,0 +1,156 @@
+diff --git a/node_modules/react-native-css-interop/dist/metro/index.js b/node_modules/react-native-css-interop/dist/metro/index.js
+index e2379ea..da7e3b9 100644
+--- a/node_modules/react-native-css-interop/dist/metro/index.js
++++ b/node_modules/react-native-css-interop/dist/metro/index.js
+@@ -178,18 +178,21 @@ async function startCSSProcessor(filePath, platform, isDev, { input, getCSSForPl
+                 ? css
+                 : getNativeJS((0, css_to_rn_1.cssToReactNativeRuntime)(css, options), debug)));
+             debug(`virtualStyles.emit ${platform}`);
++            // Metro >=0.82 expects `{ changes, rootDir }` on "change" events.
++            // Older `{ eventsQueue }` payloads crash in DependencyGraph._onHasteChange.
++            const rootDir = process.cwd();
++            const canonicalPath = path_1.default.relative(rootDir, filePath);
++            const metadata = {
++                isSymlink: false,
++                modifiedTime: Date.now(),
++            };
+             haste.emit("change", {
+-                eventsQueue: [
+-                    {
+-                        filePath,
+-                        metadata: {
+-                            modifiedTime: Date.now(),
+-                            size: 1,
+-                            type: "virtual",
+-                        },
+-                        type: "change",
+-                    },
+-                ],
++                rootDir,
++                changes: {
++                    addedFiles: [],
++                    modifiedFiles: [[canonicalPath, metadata]],
++                    removedFiles: [],
++                },
+             });
+         }).then((css) => {
+             debug(`virtualStyles.initial ${platform}`);
+diff --git a/node_modules/react-native-css-interop/dist/runtime/components.js b/node_modules/react-native-css-interop/dist/runtime/components.js
+index 8835a2d..a6568d7 100644
+--- a/node_modules/react-native-css-interop/dist/runtime/components.js
++++ b/node_modules/react-native-css-interop/dist/runtime/components.js
+@@ -5,7 +5,13 @@ const react_native_1 = require("react-native");
+ const api_1 = require("./api");
+ (0, api_1.cssInterop)(react_native_1.Image, { className: "style" });
+ (0, api_1.cssInterop)(react_native_1.Pressable, { className: "style" });
+-(0, api_1.cssInterop)(react_native_1.SafeAreaView, { className: "style" });
++const originalWarn = console.warn;
++console.warn = () => {};
++try {
++    (0, api_1.cssInterop)(react_native_1.SafeAreaView, { className: "style" });
++} finally {
++    console.warn = originalWarn;
++}
+ (0, api_1.cssInterop)(react_native_1.Switch, { className: "style" });
+ (0, api_1.cssInterop)(react_native_1.Text, { className: "style" });
+ (0, api_1.cssInterop)(react_native_1.TouchableHighlight, { className: "style" });
+@@ -18,13 +24,16 @@ const api_1 = require("./api");
+ (0, api_1.cssInterop)(react_native_1.StatusBar, {
+     className: { target: false, nativeStyleToProp: { backgroundColor: true } },
+ });
++/*
+ (0, api_1.cssInterop)(react_native_1.ScrollView, {
+     className: "style",
+     contentContainerClassName: "contentContainerStyle",
+ });
++*/
+ (0, api_1.cssInterop)(react_native_1.TextInput, {
+     className: { target: "style", nativeStyleToProp: { textAlign: true } },
+ });
++/*
+ (0, api_1.remapProps)(react_native_1.FlatList, {
+     className: "style",
+     ListFooterComponentClassName: "ListFooterComponentStyle",
+@@ -32,6 +41,7 @@ const api_1 = require("./api");
+     columnWrapperClassName: "columnWrapperStyle",
+     contentContainerClassName: "contentContainerStyle",
+ });
++*/
+ (0, api_1.remapProps)(react_native_1.ImageBackground, {
+     className: "style",
+     imageClassName: "imageStyle",
+@@ -40,12 +50,14 @@ const api_1 = require("./api");
+     className: "style",
+     contentContainerClassName: "contentContainerStyle",
+ });
++/*
+ (0, api_1.remapProps)(react_native_1.VirtualizedList, {
+     className: "style",
+     ListFooterComponentClassName: "ListFooterComponentStyle",
+     ListHeaderComponentClassName: "ListHeaderComponentStyle",
+     contentContainerClassName: "contentContainerStyle",
+ });
++*/
+ try {
+     const SafeAreaView = require("react-native-safe-area-context").SafeAreaView;
+     (0, api_1.cssInterop)(SafeAreaView, {
+diff --git a/node_modules/react-native-css-interop/src/runtime/components.ts b/node_modules/react-native-css-interop/src/runtime/components.ts
+index c46327e..59c03b5 100644
+--- a/node_modules/react-native-css-interop/src/runtime/components.ts
++++ b/node_modules/react-native-css-interop/src/runtime/components.ts
+@@ -24,7 +24,13 @@ import { cssInterop, remapProps } from "./api";
+ 
+ cssInterop(Image, { className: "style" });
+ cssInterop(Pressable, { className: "style" });
+-cssInterop(SafeAreaView, { className: "style" });
++const originalWarn = console.warn;
++console.warn = () => {};
++try {
++  cssInterop(SafeAreaView, { className: "style" });
++} finally {
++  console.warn = originalWarn;
++}
+ cssInterop(Switch, { className: "style" });
+ cssInterop(Text, { className: "style" });
+ cssInterop(TouchableHighlight, { className: "style" });
+@@ -37,14 +43,17 @@ cssInterop(ActivityIndicator, {
+ cssInterop(StatusBar, {
+   className: { target: false, nativeStyleToProp: { backgroundColor: true } },
+ });
++/*
+ cssInterop(ScrollView, {
+   className: "style",
+   contentContainerClassName: "contentContainerStyle",
+ });
++*/
+ cssInterop(TextInput, {
+   className: { target: "style", nativeStyleToProp: { textAlign: true } },
+ });
+ 
++/*
+ remapProps(FlatList, {
+   className: "style",
+   ListFooterComponentClassName: "ListFooterComponentStyle",
+@@ -52,6 +61,7 @@ remapProps(FlatList, {
+   columnWrapperClassName: "columnWrapperStyle",
+   contentContainerClassName: "contentContainerStyle",
+ });
++*/
+ remapProps(ImageBackground, {
+   className: "style",
+   imageClassName: "imageStyle",
+@@ -60,12 +70,14 @@ remapProps(KeyboardAvoidingView, {
+   className: "style",
+   contentContainerClassName: "contentContainerStyle",
+ });
++/*
+ remapProps(VirtualizedList, {
+   className: "style",
+   ListFooterComponentClassName: "ListFooterComponentStyle",
+   ListHeaderComponentClassName: "ListHeaderComponentStyle",
+   contentContainerClassName: "contentContainerStyle",
+ });
++*/
+ 
+ try {
+   const SafeAreaView = require("react-native-safe-area-context").SafeAreaView;

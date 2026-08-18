@@ -1,0 +1,20 @@
+diff --git a/node_modules/@react-native-ohos/react-native-fs/FS.common.js b/node_modules/@react-native-ohos/react-native-fs/FS.common.js
+index 48b3760..e7c2e28 100644
+--- a/node_modules/@react-native-ohos/react-native-fs/FS.common.js
++++ b/node_modules/@react-native-ohos/react-native-fs/FS.common.js
+@@ -28,7 +28,14 @@ var getJobId = () => {
+   return jobId;
+ };
+ 
+-var normalizeFilePath = (path: string) => (path.startsWith('file://') ? path.slice(7) : path);
++var isHarmony = require('react-native').Platform.OS === 'harmony';
++
++var normalizeFilePath = (path: string) => {
++  if (isHarmony && path.startsWith('file://media/')) {
++    return path;
++  }
++  return path.startsWith('file://') ? path.slice(7) : path;
++};
+ 
+ type MkdirOptions = {
+   NSURLIsExcludedFromBackupKey?: boolean; // iOS only

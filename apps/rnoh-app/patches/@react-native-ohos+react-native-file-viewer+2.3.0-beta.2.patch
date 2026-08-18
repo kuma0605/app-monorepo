@@ -1,0 +1,327 @@
+diff --git a/node_modules/@react-native-ohos/react-native-file-viewer/harmony/file_viewer.har b/node_modules/@react-native-ohos/react-native-file-viewer/harmony/file_viewer.har
+index 7cad6cf..f015590 100644
+Binary files a/node_modules/@react-native-ohos/react-native-file-viewer/harmony/file_viewer.har and b/node_modules/@react-native-ohos/react-native-file-viewer/harmony/file_viewer.har differ
+diff --git a/node_modules/@react-native-ohos/react-native-file-viewer/harmony/file_viewer/src/main/ets/RNFileViewerTurboModule.ts b/node_modules/@react-native-ohos/react-native-file-viewer/harmony/file_viewer/src/main/ets/RNFileViewerTurboModule.ts
+index f49eeb3..283bdf7 100644
+--- a/node_modules/@react-native-ohos/react-native-file-viewer/harmony/file_viewer/src/main/ets/RNFileViewerTurboModule.ts
++++ b/node_modules/@react-native-ohos/react-native-file-viewer/harmony/file_viewer/src/main/ets/RNFileViewerTurboModule.ts
+@@ -25,6 +25,14 @@ interface RNFileViewerOptions {
+   showOpenWithDialog?: boolean;
+ }
+ 
++interface ResolvedFileTarget {
++  path: string;
++  previewUri: string;
++  filename: string;
++  fileExt: string;
++  mimeType: string;
++}
++
+ // 派发事件名称
+ const OPEN_EVENT: string = 'RNFileViewerDidOpen';
+ const DISMISS_EVENT: string = 'RNFileViewerDidDismiss';
+@@ -61,92 +69,163 @@ export class RNFileViewerTurboModule extends TurboModule implements TM.FileViewe
+         },
+       );
+ 
++      const target = this.resolveFileTarget(filepath);
+       // 判断文件是否存在
+-      fs.stat(filepath)
++      fs.stat(target.path)
+         .then((stat: fs.Stat) => {
+-          this.OpenFile(filepath, this.ctx, _options);
+-          resolve();
++          this.OpenFile(target, this.ctx, _options);
+         })
+         .catch((err: BusinessError) => {
++          const message = 'get file info failed with error code: ' + err.code;
+           Hilog.error('get file info failed with error message: ' + err.message + ', error code: ' + err.code);
+-          reject('get file info failed with error code: ' + err.code);
+-          throw new Error('err.code：' + err.code);
++          this.ctx.rnInstance.emitDeviceEvent(OPEN_EVENT, { id: currentId, error: message });
++          reject(new Error(message));
+         });
+     });
+   }
+ 
+-  private async OpenFile(uri: string, ctx: TurboModuleContext, options: RNFileViewerOptions): Promise<void> {
++  private resolveFileTarget(filepath: string): ResolvedFileTarget {
++    const fUri: fileUri.FileUri = new fileUri.FileUri(filepath);
++    const path = fUri.path;
++    const filename = fUri.name || path.substring(path.lastIndexOf('/') + 1) || 'file';
++    const dotIndex = filename.lastIndexOf('.');
++    const fileExt = dotIndex >= 0 ? filename.substring(dotIndex) : '';
++    const previewUri = this.resolvePreviewUri(filepath, path);
++    const mimeFromLib = mime.getType(fileExt);
++    const mimeType =
++      (typeof mimeFromLib === 'string' && mimeFromLib) || this.fallbackMimeType(fileExt);
++
++    return { path, previewUri, filename, fileExt, mimeType };
++  }
++
++  /** 应用沙箱用 getUriFromPath；用户目录 /storage/... 需 file://docs/storage/... */
++  private resolvePreviewUri(filepath: string, path: string): string {
++    if (filepath.includes('://')) {
++      return filepath;
++    }
++    if (path.startsWith('/storage/')) {
++      return `file://docs${path}`;
++    }
++    return fileUri.getUriFromPath(path);
++  }
++
++  private isAppSandboxPath(path: string): boolean {
++    try {
++      const ctx = this.ctx.uiAbilityContext as common.UIAbilityContext;
++      return path.startsWith(ctx.filesDir) || path.startsWith(ctx.cacheDir);
++    } catch {
++      return path.includes('/haps/') && path.includes('/files/');
++    }
++  }
++
++  private fallbackMimeType(fileExt: string): string {
++    const ext = fileExt.toLowerCase();
++    const map: Record<string, string> = {
++      '.pdf': 'application/pdf',
++      '.txt': 'text/plain',
++      '.html': 'text/html',
++      '.htm': 'text/html',
++      '.jpg': 'image/jpeg',
++      '.jpeg': 'image/jpeg',
++      '.png': 'image/png',
++      '.gif': 'image/gif',
++      '.mp4': 'video/mp4',
++      '.mp3': 'audio/mpeg',
++      '.doc': 'application/msword',
++      '.docx':
++        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
++      '.xls': 'application/vnd.ms-excel',
++      '.xlsx':
++        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
++      '.ppt': 'application/vnd.ms-powerpoint',
++      '.pptx':
++        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
++    };
++    return map[ext] ?? 'application/octet-stream';
++  }
++
++  private async OpenFile(
++    target: ResolvedFileTarget,
++    ctx: TurboModuleContext,
++    options: RNFileViewerOptions,
++  ): Promise<void> {
+     const { showOpenWithDialog, showAppsSuggestions, displayName } = options;
+     const uiContext: Context = ctx.uiAbilityContext;
+-
+-    // 获取前提信息
+-    const fUri: fileUri.FileUri = new fileUri.FileUri(uri);
+-    const filename: string = fUri.name;
+-    const fileExt: string = filename.substring(filename.lastIndexOf('.'));
+-    const fileMimeType: string = mime.getType(fileExt);
++    const { previewUri, filename, mimeType, path } = target;
++    const previewTitle = displayName || filename;
++    const isSandbox = this.isAppSandboxPath(path);
++    // 沙箱 txt：优先系统打开方式（权限与 URI 更可靠）
++    const preferSystemOpen =
++      showOpenWithDialog ||
++      (isSandbox && mimeType === 'text/plain');
+ 
+     const context = uiContext as common.UIAbilityContext; // UIAbilityContext
+ 
+-    // 是否支持直接预览
++    // 是否支持直接预览（PreviewKit 需要 file:// URI）
+     const canPreviewFlag: boolean = await filePreview.canPreview(
+       uiContext,
+-      uri,
++      previewUri,
+     );
+ 
+     // 非多种预览方式,直接进行预览
+-    if (canPreviewFlag && !showOpenWithDialog) {
+-      const showFileName = displayName ? displayName : filename.split('.')[0];
+-      // action: 'ohos.want.action.viewData'
+-      this.OpenByFilePreview(ctx, uri, fileMimeType, showFileName);
++    if (canPreviewFlag && !preferSystemOpen) {
++      this.OpenByFilePreview(ctx, target, previewTitle);
+       return;
+     }
+-    let tempUri: string = fileUri.getUriFromPath(uri);
++
++    this.startAbilityOpen(context, target, previewTitle, showAppsSuggestions, true);
++  }
++
++  private startAbilityOpen(
++    context: common.UIAbilityContext,
++    target: ResolvedFileTarget,
++    previewTitle: string,
++    showAppsSuggestions?: boolean,
++    showOpenWithDialog: boolean = true,
++  ): void {
++    const { previewUri, mimeType } = target;
++
+     let want: Want = {
+-      type: fileMimeType,
+-      uri: tempUri,
+-      flags: wantConstant.Flags.FLAG_AUTH_READ_URI_PERMISSION,
++      action: 'ohos.want.action.viewData',
++      type: mimeType,
++      uri: previewUri,
++      flags:
++        wantConstant.Flags.FLAG_AUTH_READ_URI_PERMISSION |
++        wantConstant.Flags.FLAG_AUTH_WRITE_URI_PERMISSION,
++      parameters: {
++        'ohos.ability.params.showDefaultPicker': showOpenWithDialog,
++      },
+     };
+ 
+-    // 跳转应用商店
+     if (showAppsSuggestions) {
+       want = {
+         uri: `store://appgallery.huawei.com/app`,
+       };
+     }
++
+     try {
+-      let policyInfo: fileShare.PolicyInfo = {
+-        uri: tempUri,
+-        operationMode: fileShare.OperationMode.READ_MODE,
+-      };
+-      let policies: Array<fileShare.PolicyInfo> = [policyInfo];
+-      fileShare.persistPermission(policies).then(() => {
+-        context.startAbilityForResult(want, (err: BusinessError, result: common.AbilityResult) => {
+-          if (err.code) {
+-            // 处理业务逻辑错误
+-            Hilog.error(`startAbilityForResult failed, code is ${err.code}`);
+-            throw new Error('err.code：' + err.code);
+-          }
+-          eventEmitter.$emit(OPEN_EVENT);
+-          // 关闭ability
+-          if (result.resultCode === -1) {
+-            eventEmitter.$emit(DISMISS_EVENT);
+-          }
+-        });
+-      })
++      context.startAbility(want).then(() => {
++        eventEmitter.$emit(OPEN_EVENT);
++      }).catch((err: BusinessError) => {
++        const message = `startAbility failed, code=${err.code}, ${err.message}`;
++        Hilog.error(message);
++        eventEmitter.$emit(OPEN_EVENT, message);
++      });
+     } catch (error) {
+       Hilog.error(`Failed to startAbility. message: ${error}`);
+-      eventEmitter.$emit(OPEN_EVENT, error);
++      eventEmitter.$emit(OPEN_EVENT, String(error));
+     }
+   }
+ 
+   // filePreview能够展示自定义name，无关闭回调
+   private OpenByFilePreview(
+     ctx: TurboModuleContext,
+-    uri: string,
+-    fileMimeType: string,
+-    filename: string,
++    target: ResolvedFileTarget,
++    previewTitle: string,
+   ): void {
++    const { previewUri, mimeType, path } = target;
+     const uiContext: Context = ctx.uiAbilityContext;
++    const context = uiContext as common.UIAbilityContext;
+ 
+     // 计算打开窗口大小及居中位置
+     const screenInfo = ctx.getDisplayMetrics().screenPhysicalPixels;
+@@ -159,19 +238,7 @@ export class RNFileViewerTurboModule extends TurboModule implements TM.FileViewe
+         ? (screenInfo.height - screenHeight) / 2
+         : 0;
+ 
+-    if (!canIUse('SystemCapability.FileManagement.AppFileService.FolderAuthorization')) {
+-      console.error('this api is not supported on this device');
+-      return;
+-    }
+-    let policyInfo: fileShare.PolicyInfo = {
+-      uri: fileUri.getUriFromPath(uri),
+-      operationMode: fileShare.OperationMode.READ_MODE,
+-    };
+-    let policies: Array<fileShare.PolicyInfo> = [policyInfo];
+-
+-    fileShare.persistPermission(policies).then(() => {
+-      console.info("persistPermission successfully");
+-      // 调用OS filePreview 进行预览
++    const doOpenPreview = () => {
+       const displayInfo: filePreview.DisplayInfo = {
+         x: offsetX,
+         y: offsetY,
+@@ -180,9 +247,9 @@ export class RNFileViewerTurboModule extends TurboModule implements TM.FileViewe
+       };
+ 
+       const fileInfo: filePreview.PreviewInfo = {
+-        title: filename,
+-        uri: fileUri.getUriFromPath(uri),
+-        mimeType: fileMimeType,
++        title: previewTitle,
++        uri: previewUri,
++        mimeType: mimeType,
+       };
+ 
+       // 打开预览窗口
+@@ -192,22 +259,42 @@ export class RNFileViewerTurboModule extends TurboModule implements TM.FileViewe
+           eventEmitter.$emit(OPEN_EVENT);
+         })
+         .catch((err: BusinessError) => {
+-          Hilog.error(`Failed to openPreview, err.code = ${err.code}`);
+-          eventEmitter.$emit(OPEN_EVENT, err);
+-          throw new Error('err.code：' + err.code);
++          Hilog.error(`Failed to openPreview, err.code = ${err.code}, fallback startAbility`);
++          if (this.isAppSandboxPath(path)) {
++            eventEmitter.$emit(OPEN_EVENT, `openPreview failed, code=${err.code}`);
++            return;
++          }
++          this.startAbilityOpen(context, target, previewTitle, false, true);
+         });
+-    }).catch((err: BusinessError<Array<fileShare.PolicyErrorResult>>) => {
+-      console.error("persistPermission failed with error message: " + err.message + ", error code: " + err.code);
+-      if (err.code == 13900001 && err.data) {
+-        for (let i = 0; i < err.data.length; i++) {
+-          console.error("error code : " + JSON.stringify(err.data[i].code));
+-          console.error("error uri : " + JSON.stringify(err.data[i].uri));
+-          console.error("error reason : " + JSON.stringify(err.data[i].message));
+-        }
+-      }
+-    });
++    };
++
++    const isSandboxPath = this.isAppSandboxPath(path);
++    const hasFolderAuth = canIUse('SystemCapability.FileManagement.AppFileService.FolderAuthorization');
+ 
++    if (hasFolderAuth && !isSandboxPath) {
++      let policyInfo: fileShare.PolicyInfo = {
++        uri: previewUri,
++        operationMode: fileShare.OperationMode.READ_MODE,
++      };
++      let policies: Array<fileShare.PolicyInfo> = [policyInfo];
+ 
++      fileShare.persistPermission(policies).then(() => {
++        console.info("persistPermission successfully");
++        doOpenPreview();
++      }).catch((err: BusinessError<Array<fileShare.PolicyErrorResult>>) => {
++        console.error("persistPermission failed with error message: " + err.message + ", error code: " + err.code);
++        if (err.code == 13900001 && err.data) {
++          for (let i = 0; i < err.data.length; i++) {
++            console.error("error code : " + JSON.stringify(err.data[i].code));
++            console.error("error uri : " + JSON.stringify(err.data[i].uri));
++            console.error("error reason : " + JSON.stringify(err.data[i].message));
++          }
++        }
++        doOpenPreview();
++      });
++    } else {
++      doOpenPreview();
++    }
+   }
+ 
+   public addListener(eventType: string): void {
+@@ -217,4 +304,3 @@ export class RNFileViewerTurboModule extends TurboModule implements TM.FileViewe
+   }
+ }
+ 
+-

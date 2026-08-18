@@ -1,0 +1,13 @@
+{
+  "name": "app-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "App monorepo - 小程序/H5 + 跨端App + 共享业务层",
+  "scripts": {
+    "dev:miniapp": "pnpm --filter miniapp dev:weapp",
+    "dev:h5": "pnpm --filter miniapp dev:h5",
+    "dev:rnoh": "pnpm --filter rnoh-app start",
+    "build:miniapp": "pnpm --filter miniapp build:weapp",
+    "build:h5": "pnpm --filter miniapp build:h5"
+  }
+}
